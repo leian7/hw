@@ -48,13 +48,9 @@ void shell_loop() {
 	do {
 		printf(": ");				// print the prompt
 		line = grab_line();			// grab user's line
-		printf("about to cut args\n");
 		args = cut_args(line);		// parse into args
-		printf("about t oget status\n");
 		status = shell_execute(args);	// get status
-		printf("about to free line\n");
 		free(line);					// free mem
-		printf("about to free args\n");
 		free(args);
 
 	} while (status != 0);
@@ -62,66 +58,59 @@ void shell_loop() {
 
 /* Forks the parent process, waits for child, and sets the shell status */
 int shell_fork(char** args) {
-//	char* input_redir = NULL;
+	char* input_redir = NULL;
    	char* output_redir = NULL;
 
-//	int input_file = STDIN_FILENO;
+	int input_file = STDIN_FILENO;
 	int output_file = STDOUT_FILENO;
-	printf("done with dec\n");
-/*	if (strcmp(args[1], "<")==0) {
-		printf("yes there is a <\n");
-		fflush(stdout);
-		if (args[2] == NULL) {
-			printf("Error: Missing input file\n");
-			fflush(stdout);
+	if (args[1] != NULL) {
+		if (strcmp(args[1], "<")==0) {
+			if (args[2] == NULL) {
+				printf("Error: Missing input file\n");
+				fflush(stdout);
+			}
+			else {						// input file was provided
+				input_redir = malloc(2048 * sizeof(char));
+				strcpy(input_redir, args[2]);
+			}
 		}
-		else {						// input file was provided
-			input_redir = malloc(2048 * sizeof(char));
-			strcpy(input_redir, args[2]);
+		else if (strcmp(args[1], ">") == 0) {
+			printf("Yes, there is a >\n");
+			fflush(stdout);
+			if (args[2] == NULL) {
+				printf("Error: Missing output file\n");
+				fflush(stdout);
+			}
+			else {
+				output_redir = malloc(2048 * sizeof(char));
+				strcpy(output_redir, args[2]);
+				printf("we got here\n");
+			}
 		}
 	}
-	else */ 
-	if (args[1] != NULL) {
-	if (strcmp(args[1], ">") == 0) {
-		printf("Yes, there is a >\n");
-		fflush(stdout);
-		if (args[2] == NULL) {
-			printf("Error: Missing output file\n");
-			fflush(stdout);
-		}
-		else {
-			output_redir = malloc(2048 * sizeof(char));
-			strcpy(output_redir, args[2]);
-			printf("we got here\n");
-		}
-	}}
-	printf("dec pids\n");
 	pid_t spawnpid = -5;			// initialize to rand val
 	int status = -5;				// initialize to rand val
 
-	printf("about to fork\n");
 	spawnpid = fork();				// fork process
 	if (spawnpid == -1) {			// bad fork, set error
 		perror("Fork unsuccessful; child process wasn't created\n");
 		exit(1);					// bad status
 	}
 	else if (spawnpid == 0) {		// good fork: child case
-		printf("we're child\n");
-		fflush(stdout);
-/*		if (input_redir != NULL) {
+		if (input_redir != NULL) {
 			input_file = open(input_redir, O_RDONLY);
 			if (input_file == -1) {
 				printf("Couldn't open input file\n");
 				fflush(stdout);
+				exit(1);
 			}
 			else {
+				args[1] = args[2] = NULL;
 				dup2(input_file, STDIN_FILENO);
 				close(input_file);
 			}
-		} */
-		if (output_redir != NULL) {
-			printf("output redir isn't null\n");
-			fflush(stdout);
+		}
+		else if (output_redir != NULL) {
 			output_file = open(output_redir, O_WRONLY | O_CREAT, 0777);
 			if (output_file == -1) {
 				printf("Couldn't open output file\n");
@@ -134,9 +123,6 @@ int shell_fork(char** args) {
 			}
 		}
 		// if bad args sent to exec, set error
-	//	execvp(args[0], args);
-	//	printf("didn't work?\n");
-	//	fflush(stdout);
 		if (execvp(args[0], args) == -1) {
 			perror("Error: Couldn't find the command to run\n");
 			curr_status = 1;
@@ -158,6 +144,9 @@ int shell_fork(char** args) {
 			else if (WTERMSIG(status)) {
 				curr_status = WTERMSIG(status);
 			}
+			if (input_redir != NULL) {
+				free(input_redir);
+			}
 			if (output_redir != NULL) {
 				free(output_redir);
 			}
@@ -178,7 +167,7 @@ int exit_command() {
  * status */
 int cd_command(char** args) {
 	if (args[1] == NULL) {
-		fprintf(stderr, "cd requires argument\n");
+		chdir(getenv("HOME"));
 	}
 	else if (chdir(args[1]) != 0) {
 		perror("Invalid destination\n");
@@ -214,7 +203,6 @@ int shell_execute(char** args) {
 		return status_command();	//  1 means run built-in
 	}
 	else {
-		printf("about to fork args\n");
 		return shell_fork(args);	// 1 means to let exec handle
 	}
 }
