@@ -86,7 +86,6 @@ int shell_fork(char** args) {
 			}
 			else if (WIFSIGNALED(status)) {
 				curr_status = WSTOPSIG(status);
-				/// pass type to get_type
 			}
 			else if (WTERMSIG(status)) {
 				curr_status = WTERMSIG(status);
@@ -109,14 +108,9 @@ int exit_command() {
 int cd_command(char** args) {
 	if (args[1] == NULL) {
 		fprintf(stderr, "cd requires argument\n");
-		curr_status = 1;
 	}
 	else if (chdir(args[1]) != 0) {
 		perror("Invalid destination\n");
-		curr_status = 1;
-	}
-	else {
-		curr_status = 0;
 	}
 	return 1;
 }
