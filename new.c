@@ -95,7 +95,7 @@ int shell_fork(char** args) {
 	int input_file = STDIN_FILENO;
 	int output_file = STDOUT_FILENO;
 
-	struct sigaction action;
+	struct sigaction action = {0};
 	action.sa_handler = SIG_IGN;
 	sigaction(SIGINT, &action, NULL);
 
