@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
+#include <signal.h>
 
 #define ARG_DELIM " \t\n"
 
@@ -39,6 +40,31 @@ char** cut_args(char* line) {
 	return args;
 }
 
+
+/* Checks to see if child processes have ended */
+void check_children() {
+	int status;
+	pid_t spawnpid;
+
+	while ((spawnpid = waitpid(-1, &status, WNOHANG)) > 0) {
+			fflush(stdout);
+		printf("bg process id was %d; ", spawnpid);
+		fflush(stdout);
+
+		if (WIFEXITED(status)) {
+			fflush(stdout);
+			printf("exited with status %d\n", status);
+			fflush(stdout);
+		}
+		if (WIFSIGNALED(status)) {
+			fflush(stdout);
+			printf("terminated w signal %d\n", WTERMSIG(status));
+			fflush(stdout);
+		}
+	}
+}
+
+
 /* Displays shell interface and accepts input */
 void shell_loop() {
 	char* line;		// user's command line input
@@ -46,7 +72,9 @@ void shell_loop() {
 	int status = 43;		// current status
 
 	do {
+		check_children();
 		printf(": ");				// print the prompt
+		fflush(stdout);
 		line = grab_line();			// grab user's line
 		args = cut_args(line);		// parse into args
 		status = shell_execute(args);	// get status
@@ -58,11 +86,28 @@ void shell_loop() {
 
 /* Forks the parent process, waits for child, and sets the shell status */
 int shell_fork(char** args) {
+	int count = 0;					// preliminary argument count
+	int bg = 0;						// default: process not backgrounded
+
 	char* input_redir = NULL;
    	char* output_redir = NULL;
 
 	int input_file = STDIN_FILENO;
 	int output_file = STDOUT_FILENO;
+
+	struct sigaction action;
+	action.sa_handler = SIG_IGN;
+	sigaction(SIGINT, &action, NULL);
+
+	while (args[count] != NULL) {
+		count++;
+	}
+	
+	if (strcmp(args[count-1], "&") == 0) {
+		bg = 1;						// user does want process to be bg
+		args[count-1] = NULL;		// Now we know. Hack off &
+	}
+
 	if (args[1] != NULL) {
 		if (strcmp(args[1], "<")==0) {
 			if (args[2] == NULL) {
@@ -75,7 +120,6 @@ int shell_fork(char** args) {
 			}
 		}
 		else if (strcmp(args[1], ">") == 0) {
-			printf("Yes, there is a >\n");
 			fflush(stdout);
 			if (args[2] == NULL) {
 				printf("Error: Missing output file\n");
@@ -84,7 +128,6 @@ int shell_fork(char** args) {
 			else {
 				output_redir = malloc(2048 * sizeof(char));
 				strcpy(output_redir, args[2]);
-				printf("we got here\n");
 			}
 		}
 	}
@@ -97,10 +140,15 @@ int shell_fork(char** args) {
 		exit(1);					// bad status
 	}
 	else if (spawnpid == 0) {		// good fork: child case
+		if (bg == 0) {
+			action.sa_handler = SIG_DFL;
+			action.sa_flags = 0;
+			sigaction(SIGINT, &action, NULL);
+		}
 		if (input_redir != NULL) {
 			input_file = open(input_redir, O_RDONLY);
 			if (input_file == -1) {
-				printf("Couldn't open input file\n");
+				printf("Couldn't open %s for input\n", input_redir);
 				fflush(stdout);
 				exit(1);
 			}
@@ -133,24 +181,28 @@ int shell_fork(char** args) {
 	else {							// good fork: parent case
 		// wait for our child as long as child has not terminated normally or
 		// by signal
-		do {
-			waitpid(spawnpid, &status, 0);
+//		do {
+		if (input_redir != NULL) {
+			free(input_redir);
+		}
+		if (output_redir != NULL) {
+			free(output_redir);
+		}
+
+		if (bg == 0) {				// if not bg, wait	
+			waitpid(spawnpid, &status, WUNTRACED);
 			if (WIFEXITED(status)) {
 				curr_status = WEXITSTATUS(status);
 			}
 			else if (WIFSIGNALED(status)) {
-				curr_status = WSTOPSIG(status);
-			}
-			else if (WTERMSIG(status)) {
 				curr_status = WTERMSIG(status);
+				printf("terminated by signal %d\n", WTERMSIG(status));
 			}
-			if (input_redir != NULL) {
-				free(input_redir);
-			}
-			if (output_redir != NULL) {
-				free(output_redir);
-			}
-		} while (WIFEXITED(status) == 0 && WIFSIGNALED(status) == 0);
+		}
+		else {
+			printf("bg process is %d\n", spawnpid);
+		}
+//		} while (WIFEXITED(status) == 0 && WIFSIGNALED(status) == 0);
 	}
 	return 1;						// "everything ok" int indicator
 }
@@ -178,10 +230,14 @@ int cd_command(char** args) {
 
 /* Retrieves recorded status value */
 int status_command() {
-	//call get_type to find out which scenario happend
-	//based on scenario, print custom err msg + the curr status
-	//}
-	printf("%d\n", curr_status);
+	//based on scenario (signal vs. exit), print the curr status
+	if (curr_status == 1 || curr_status == 0) {
+
+		printf("exit value %d\n", curr_status);
+	}
+	else {
+		printf("terminated by signal %d\n", curr_status);
+	}
 	fflush(stdout);
 	return 1;
 }
